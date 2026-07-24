@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Smart Pharmacy Cold Storage Monitoring</title>
+<!-- <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script> -->
+<script src="chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #0f172a;
+    --panel: #1e293b;
+    --text: #e2e8f0;
+    --muted: #94a3b8;
+    --ok: #22c55e;
+    --warn: #f59e0b;
+    --danger: #ef4444;
+    --accent: #38bdf8;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    padding: 24px;
+  }
+  header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px;}
+  header h1 { font-size: 20px; margin: 0; }
+  header .sub { color: var(--muted); font-size: 13px; }
+  .config-bar { display: flex; gap: 8px; align-items: center; }
+  .config-bar input {
+    background: var(--panel); border: 1px solid #334155; color: var(--text);
+    padding: 6px 10px; border-radius: 6px; width: 380px; font-size: 12px;
+  }
+  .config-bar button {
+    background: var(--accent); border: none; color: #05202f; font-weight: 600;
+    padding: 7px 14px; border-radius: 6px; cursor: pointer;
+  }
+  #status-pill { font-size: 12px; padding: 4px 10px; border-radius: 999px; background: #334155; }
+  #status-pill.ok { background: rgba(34,197,94,0.15); color: var(--ok); }
+  #status-pill.err { background: rgba(239,68,68,0.15); color: var(--danger); }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 16px; margin-bottom: 16px; }
+  .card { background: var(--panel); border-radius: 10px; padding: 14px 16px; border: 1px solid #263449; }
+  .card h2 { font-size: 14px; margin: 0 0 4px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+  .card .latest { font-size: 26px; font-weight: 700; margin-bottom: 6px; }
+  .card canvas { max-height: 160px; }
+
+  .door-card .latest.open { color: var(--danger); }
+  .door-card .latest.closed { color: var(--ok); }
+
+  #alerts-panel { background: var(--panel); border-radius: 10px; padding: 14px 16px; border: 1px solid #263449; }
+  #alerts-panel h2 { font-size: 14px; margin: 0 0 8px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+  .alert-row {
+    display: flex; justify-content: space-between; gap: 12px;
+    padding: 8px 10px; border-radius: 6px; background: rgba(239,68,68,0.08);
+    border-left: 3px solid var(--danger); margin-bottom: 6px; font-size: 13px;
+  }
+  .alert-row .meta { color: var(--muted); font-size: 11px; white-space: nowrap; }
+  .empty { color: var(--muted); font-size: 13px; padding: 8px 0; }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>Smart Pharmacy Cold Storage Monitoring</h1>
+    <div class="sub">Edge sensors &rarr; Fog early-warning &rarr; Cloud analytics (AWS)</div>
+  </div>
+  <div class="config-bar">
+    <span id="status-pill">not connected</span>
+    <input id="api-base-input" placeholder="API base URL, e.g. https://xxxx.execute-api.us-east-1.amazonaws.com/prod" />
+    <button onclick="saveApiBase()">Connect</button>
+  </div>
+</header>
+
+<div class="grid">
+  <div class="card">
+    <h2>Temperature (&deg;C)</h2>
+    <div class="latest" id="latest-temperature">--</div>
+    <canvas id="chart-temperature"></canvas>
+  </div>
+  <div class="card">
+    <h2>Humidity (%)</h2>
+    <div class="latest" id="latest-humidity">--</div>
+    <canvas id="chart-humidity"></canvas>
+  </div>
+  <div class="card">
+    <h2>Vibration (g)</h2>
+    <div class="latest" id="latest-vibration">--</div>
+    <canvas id="chart-vibration"></canvas>
+  </div>
+  <div class="card">
+    <h2>Battery (%)</h2>
+    <div class="latest" id="latest-battery_level">--</div>
+    <canvas id="chart-battery_level"></canvas>
+  </div>
+  <div class="card door-card">
+    <h2>Door Status</h2>
+    <div class="latest" id="latest-door_status">--</div>
+    <div style="color: var(--muted); font-size: 12px;">Last changed: <span id="door-time">--</span></div>
+  </div>
+</div>
+
+<div id="alerts-panel">
+  <h2>Early-warning alerts</h2>
+  <div id="alerts-list"><div class="empty">No alerts yet.</div></div>
+</div>
+
+<script>
+// ---- Configuration ---------------------------------------------------
+// Set this to the API Gateway base URL printed by infra/deploy.sh, e.g.
+// https://abcd1234.execute-api.us-east-1.amazonaws.com/prod
+let API_BASE_URL = localStorage.getItem("coldchain_api_base") || "";
+const POLL_MS = 5000;
+const CHART_SENSORS = ["temperature", "humidity", "vibration", "battery_level"];
+
+document.getElementById("api-base-input").value = API_BASE_URL;
+
+function saveApiBase() {
+  API_BASE_URL = document.getElementById("api-base-input").value.trim().replace(/\/$/, "");
+  localStorage.setItem("coldchain_api_base", API_BASE_URL);
+  refresh();
+}
+
+function setStatus(ok) {
+  const pill = document.getElementById("status-pill");
+  pill.className = ok ? "ok" : "err";
+  pill.textContent = ok ? "connected" : "connection error";
+}
+
+const charts = {};
+function getChart(sensorType, unit) {
+  if (charts[sensorType]) return charts[sensorType];
+  const ctx = document.getElementById("chart-" + sensorType).getContext("2d");
+  charts[sensorType] = new Chart(ctx, {
+    type: "line",
+    data: { labels: [], datasets: [{
+      label: sensorType,
+      data: [],
+      borderColor: "#38bdf8",
+      backgroundColor: "rgba(56,189,248,0.15)",
+      tension: 0.3,
+      pointRadius: 0,
+      fill: true,
+    }]},
+    options: {
+      responsive: true,
+      animation: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { display: false },
+        y: { ticks: { color: "#94a3b8" }, grid: { color: "#263449" } },
+      },
+    },
+  });
+  return charts[sensorType];
+}
+
+async function fetchJSON(path) {
+  const res = await fetch(API_BASE_URL + path);
+  if (!res.ok) throw new Error("HTTP " + res.status);
+  return res.json();
+}
+
+async function refreshTelemetry() {
+  const data = await fetchJSON("/telemetry?limit=40");
+
+  CHART_SENSORS.forEach((sensorType) => {
+    const readings = data[sensorType] || [];
+    if (readings.length === 0) return;
+    const chart = getChart(sensorType);
+    chart.data.labels = readings.map(r => new Date(r.timestamp).toLocaleTimeString());
+    chart.data.datasets[0].data = readings.map(r => parseFloat(r.value));
+    chart.update();
+    const latest = readings[readings.length - 1];
+    document.getElementById("latest-" + sensorType).textContent = latest.value + " " + (latest.unit || "");
+  });
+
+  const doorReadings = data.door_status || [];
+  if (doorReadings.length > 0) {
+    const latest = doorReadings[doorReadings.length - 1];
+    const el = document.getElementById("latest-door_status");
+    const isOpen = String(latest.value) === "1";
+    el.textContent = isOpen ? "OPEN" : "CLOSED";
+    el.className = "latest " + (isOpen ? "open" : "closed");
+    document.getElementById("door-time").textContent = new Date(latest.timestamp).toLocaleTimeString();
+  }
+}
+
+async function refreshAlerts() {
+  const data = await fetchJSON("/alerts?limit=20");
+  const list = document.getElementById("alerts-list");
+  const alerts = (data.alerts || []).slice().reverse();
+  if (alerts.length === 0) {
+    list.innerHTML = '<div class="empty">No alerts yet.</div>';
+    return;
+  }
+  list.innerHTML = alerts.map(a => `
+    <div class="alert-row">
+      <div><strong>${a.sensor_type}</strong> = ${a.value}${a.unit || ""} &mdash; ${a.alert_reason || ""}</div>
+      <div class="meta">${new Date(a.timestamp || a.sk).toLocaleString()}</div>
+    </div>
+  `).join("");
+}
+
+async function refresh() {
+  if (!API_BASE_URL) { setStatus(false); return; }
+  try {
+    await Promise.all([refreshTelemetry(), refreshAlerts()]);
+    setStatus(true);
+  } catch (e) {
+    console.error(e);
+    setStatus(false);
+  }
+}
+
+refresh();
+setInterval(refresh, POLL_MS);
+</script>
+
+</body>
+</html>
