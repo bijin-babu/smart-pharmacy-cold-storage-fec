@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install boto3
+
+      - name: Syntax / import check (sensors, fog node, Lambda handlers)
+        run: |
+          python -m py_compile sensors/sensor_simulator.py sensors/fog_node.py
+          python -m py_compile backend/lambda_ingest_telemetry.py backend/lambda_ingest_alerts.py backend/lambda_api_handler.py
+
+      - name: Run sensor + fog node in dry-run mode (no AWS credentials required)
+        working-directory: sensors
+        run: python3 fog_node.py --dry-run --duration 15
