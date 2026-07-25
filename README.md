@@ -1,6 +1,5 @@
 # Edge-Assisted Smart Pharmacy Cold Storage Monitoring
 ### Fog-Based Early Warning + AWS Cloud Analytics
-H9FECC Fog and Edge Computing — CA Project
 
 ## Architecture
 
