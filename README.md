@@ -30,7 +30,7 @@ coldchain-fec/
 
 **Cloud backend** (`backend/*.py`, `infra/deploy.sh`) — SQS → Lambda → DynamoDB for both telemetry and alerts, plus a third Lambda behind API Gateway that the dashboard calls. Everything here is serverless, so it scales without me managing any servers.
 
-**Dashboard** (`dashboard/dashboard.html`) — one self-contained HTML file with Chart.js, no build step needed. `deploy.sh` publishes it to an S3 static website automatically, so it's reachable from a public URL rather than only as a local file, and it polls the API every 5 seconds. There's also a second copy running directly on the EC2 instance (behind its Elastic IP, on port 80), served by a plain Python `http.server` process — `infra/deploy_dashboard_ec2.sh` pushes fresh copies of the two dashboard files over SSH and restarts that process, and CI runs it automatically on every push too.
+**Dashboard** (`dashboard/dashboard.html`) — one self-contained HTML file with Chart.js, no build step needed. `deploy.sh` publishes it to an S3 static website automatically, so it's reachable from a public URL rather than only as a local file, and it polls the API every 5 seconds. There's also a second copy running directly on the EC2 instance (behind its Elastic IP, on port 80)
 
 
 
