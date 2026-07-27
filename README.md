@@ -4,7 +4,7 @@ Fog and Edge Computing, CA project — MSc Cloud Computing, National College of 
 
 This is my implementation of a fog-assisted IoT monitoring setup for a pharmacy cold storage fridge/freezer. Five simulated sensors (temperature, humidity, door, battery, vibration) feed a fog node that checks each reading against a threshold locally, and forwards everything to a serverless AWS backend that a small dashboard polls.
 
-## How it fits together
+## Project layout
 
 ```
 coldchain-fec/
@@ -30,7 +30,7 @@ coldchain-fec/
 
 **Cloud backend** (`backend/*.py`, `infra/deploy.sh`) — SQS → Lambda → DynamoDB for both telemetry and alerts, plus a third Lambda behind API Gateway that the dashboard calls. Everything here is serverless, so it scales without me managing any servers.
 
-**Dashboard** (`dashboard/dashboard.html`) — one self-contained HTML file with Chart.js, no build step needed. `deploy.sh` publishes it to an S3 static website automatically, so it's reachable from a public URL rather than only as a local file, and it polls the API every 5 seconds. There's also a second copy running directly on the EC2 instance (behind its Elastic IP, on port 80)
+**Dashboard** (`dashboard/dashboard.html`) — one self-contained HTML file with Chart.js, no build step needed. `deploy.sh` publishes it to an S3 static website automatically, so it's reachable from a public URL rather than only as a local file, and it polls the API every 5 seconds. There's also a second copy running directly on the EC2 instance behind its Elastic IP, served on port 80 by a plain Python http.server process I start and refresh by hand over SSH.
 
 
 
