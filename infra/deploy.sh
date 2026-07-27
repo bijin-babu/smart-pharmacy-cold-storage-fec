@@ -327,7 +327,7 @@ Next steps:
      "alerts_queue_url":    "$ALERTS_QUEUE_URL"
 2. Run the fog node for real:
      cd ../sensors && python3 fog_node.py --live --duration 300
-3. Open the hosted dashboard (no local file needed):
+3. Open the hosted dashboard:
      $DASHBOARD_URL
 ============================================================
 EOF
