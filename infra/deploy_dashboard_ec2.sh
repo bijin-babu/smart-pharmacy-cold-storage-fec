@@ -37,7 +37,7 @@ echo "== Diagnostic: verbose SSH connection test =="
 ssh -v "${SSH_OPTS[@]}" "$TARGET" "echo remote-auth-ok" || true
 
 echo "== Stopping any web server already on port 80 =="
-ssh "${SSH_OPTS[@]}" "$TARGET" "sudo pkill -f 'http.server 80' || true"
+ssh -v "${SSH_OPTS[@]}" "$TARGET" "sudo pkill -f 'http.server 80' || true"
 
 echo "== Copying dashboard files to $EC2_HOST:~/$REMOTE_DIR =="
 ssh "${SSH_OPTS[@]}" "$TARGET" "mkdir -p ~/$REMOTE_DIR"
