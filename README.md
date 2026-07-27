@@ -1,6 +1,6 @@
 # Edge-Assisted Smart Pharmacy Cold Storage Monitoring
 
-H9FECC (Fog and Edge Computing) CA project — MSc Cloud Computing, National College of Ireland.
+Fog and Edge Computing, CA project — MSc Cloud Computing, National College of Ireland.
 
 This is my implementation of a fog-assisted IoT monitoring setup for a pharmacy cold storage fridge/freezer. Five simulated sensors (temperature, humidity, door, battery, vibration) feed a fog node that checks each reading against a threshold locally, and forwards everything to a serverless AWS backend that a small dashboard polls.
 
@@ -32,26 +32,6 @@ coldchain-fec/
 
 **Dashboard** (`dashboard/dashboard.html`) — one self-contained HTML file with Chart.js, no build step needed. `deploy.sh` publishes it to an S3 static website automatically, so it's reachable from a public URL rather than only as a local file, and it polls the API every 5 seconds. There's also a second copy running directly on the EC2 instance (behind its Elastic IP, on port 80), served by a plain Python `http.server` process — `infra/deploy_dashboard_ec2.sh` pushes fresh copies of the two dashboard files over SSH and restarts that process, and CI runs it automatically on every push too.
 
-## Project layout
-
-```
-coldchain-fec/
-  sensors/
-    config.json           sensor + fog + AWS config
-    sensor_simulator.py   edge layer
-    fog_node.py           fog layer (run this)
-    requirements.txt
-  backend/
-    lambda_ingest_telemetry.py   SQS(telemetry) -> DynamoDB
-    lambda_ingest_alerts.py      SQS(alerts) -> DynamoDB + SNS
-    lambda_api_handler.py        API Gateway -> DynamoDB reads
-  infra/
-    deploy.sh             provisions everything on AWS (idempotent)
-    teardown.sh           tears it all back down
-  dashboard/
-    dashboard.html        open in any browser
-
-```
 
 
 ## Running it
