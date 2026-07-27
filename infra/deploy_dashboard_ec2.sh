@@ -27,8 +27,14 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DASHBOARD_DIR="$SCRIPT_DIR/../dashboard"
 
 chmod 600 "$EC2_KEY_PATH" 2>/dev/null || true
-SSH_OPTS=(-i "$EC2_KEY_PATH" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10)
+SSH_OPTS=(-i "$EC2_KEY_PATH" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -o BatchMode=yes)
 TARGET="$EC2_USER@$EC2_HOST"
+
+# Temporary diagnostic: prints verbose SSH negotiation/auth details so a
+# connection failure in CI shows the real reason instead of a bare exit
+# code. Safe to remove once the pipeline is confirmed working.
+echo "== Diagnostic: verbose SSH connection test =="
+ssh -v "${SSH_OPTS[@]}" "$TARGET" "echo remote-auth-ok" || true
 
 echo "== Stopping any web server already on port 80 =="
 ssh "${SSH_OPTS[@]}" "$TARGET" "sudo pkill -f 'http.server 80' || true"
