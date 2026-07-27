@@ -1,10 +1,11 @@
-name: CI
+name: CI/CD
 
 on:
   push:
     branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
+  workflow_dispatch: {}
 
 jobs:
   build-and-test:
@@ -31,3 +32,26 @@ jobs:
       - name: Run sensor + fog node in dry-run mode (no AWS credentials required)
         working-directory: sensors
         run: python3 fog_node.py --dry-run --duration 15
+
+  deploy:
+    name: Deploy backend to AWS (Learner Lab)
+    needs: build-and-test
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
+      AWS_DEFAULT_REGION: us-east-1
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Verify Learner Lab session credentials are still valid
+        run: aws sts get-caller-identity
+
+      - name: Deploy / update backend
+        working-directory: infra
+        run: |
+          chmod +x deploy.sh
+          ./deploy.sh

@@ -21,7 +21,7 @@ This is my implementation of a fog-assisted IoT monitoring setup for a pharmacy 
 
 **Cloud backend** (`backend/*.py`, `infra/deploy.sh`) — SQS → Lambda → DynamoDB for both telemetry and alerts, plus a third Lambda behind API Gateway that the dashboard calls. Everything here is serverless, so it scales without me managing any servers.
 
-**Dashboard** (`dashboard/dashboard.html`) — one self-contained HTML file with Chart.js, no build step, no hosting. I just open it in a browser and it polls the API every 5 seconds.
+**Dashboard** (`dashboard/dashboard.html`) — one self-contained HTML file with Chart.js, no build step needed. `deploy.sh` publishes it to an S3 static website automatically, so it's reachable from a public URL rather than only as a local file, and it polls the API every 5 seconds.
 
 ## Project layout
 
@@ -61,7 +61,7 @@ cd infra
 chmod +x deploy.sh
 ./deploy.sh
 ```
-It prints the API base URL and queue URLs at the end — I copied those into `sensors/config.json`. The script is idempotent, so if the Learner Lab credentials expire mid-session (they do, every few hours) I just re-export fresh ones and run it again; it skips anything already created.
+It prints the API base URL, queue URLs, and the dashboard's public S3 URL at the end — I copied the queue URLs into `sensors/config.json`. The script is idempotent, so if the Learner Lab credentials expire mid-session (they do, every few hours) I just re-export fresh ones and run it again; it skips anything already created.
 
 **3. Send real data to AWS:**
 ```bash
@@ -69,7 +69,7 @@ cd sensors
 python3 fog_node.py --live --duration 300
 ```
 
-**4. Open the dashboard** — `dashboard/dashboard.html` in any browser. It's already pointed at the deployed API, so it connects and starts drawing live charts right away.
+**4. Open the dashboard** — `deploy.sh` publishes `dashboard.html` to an S3 static website and prints the URL (something like `http://coldchain-dashboard-<account-id>.s3-website-us-east-1.amazonaws.com/dashboard.html`). It's already pointed at the deployed API, so it connects and starts drawing live charts right away, no local file needed. `dashboard/dashboard.html` still works fine opened locally too, if preferred.
 
 **5. Tear down when done**, to stay inside the Learner Lab budget:
 ```bash
@@ -81,6 +81,6 @@ cd infra
 
 - The SNS alerts topic exists but I never subscribed an email to it — an easy follow-up if I wanted real notifications instead of just the dashboard panel.
 - No authentication on the API Gateway endpoints. Fine for a scoped class project with no real data behind it, but I've flagged it as a limitation in the report.
-- `.github/workflows/ci.yml` runs a syntax check plus the dry-run test on every push. Actual deployment to AWS isn't automated, since Learner Lab credentials are temporary and there's no stable secret a CI job could hold onto between runs — manually re-running `deploy.sh` each session is the practical alternative.
+- `.github/workflows/ci.yml` runs a syntax check plus the dry-run test on every push, and a second job then runs `deploy.sh` against AWS using session credentials stored as GitHub Actions secrets, so a push to `main` automatically redeploys the backend and republishes the dashboard. Those secrets have to be refreshed manually whenever a new Learner Lab session starts, since Learner Lab only issues temporary, session-scoped credentials rather than long-lived ones.
 
 Full report and reflection are in `report/`. `AWS_Implementation_Guide.md` has my own step-by-step notes from actually setting the AWS side up, in case any of the Learner Lab quirks trip someone else up too.

@@ -242,6 +242,60 @@ aws apigateway create-deployment --rest-api-id "$API_ID" --stage-name "$STAGE" -
 API_URL="https://${API_ID}.execute-api.${REGION}.amazonaws.com/${STAGE}"
 
 # ---------------------------------------------------------------------------
+# 7. Dashboard hosting (S3 static website)
+# ---------------------------------------------------------------------------
+echo "== S3 dashboard hosting =="
+DASHBOARD_BUCKET="${PROJECT}-dashboard-${ACCOUNT_ID}"
+DASHBOARD_DIR="$SCRIPT_DIR/../dashboard"
+
+if aws s3api head-bucket --bucket "$DASHBOARD_BUCKET" --region "$REGION" >/dev/null 2>&1; then
+  echo "S3 bucket $DASHBOARD_BUCKET already exists, skipping creation."
+else
+  echo "Creating S3 bucket $DASHBOARD_BUCKET..."
+  if [ "$REGION" == "us-east-1" ]; then
+    aws s3api create-bucket --bucket "$DASHBOARD_BUCKET" --region "$REGION" >/dev/null
+  else
+    aws s3api create-bucket --bucket "$DASHBOARD_BUCKET" --region "$REGION" \
+      --create-bucket-configuration LocationConstraint="$REGION" >/dev/null
+  fi
+fi
+
+# Static website hosting serves plain HTML/JS over public HTTP; this bucket
+# holds no sensitive data (the dashboard is a client that calls the already-
+# public API Gateway endpoints), so public read access is acceptable here.
+aws s3api put-public-access-block --bucket "$DASHBOARD_BUCKET" --region "$REGION" \
+  --public-access-block-configuration BlockPublicAcls=false,IgnorePublicAcls=false,BlockPublicPolicy=false,RestrictPublicBuckets=false >/dev/null
+
+aws s3 website "s3://$DASHBOARD_BUCKET/" --index-document dashboard.html --region "$REGION"
+
+cat > "$BUILD_DIR/dashboard-bucket-policy.json" <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "PublicReadGetObject",
+      "Effect": "Allow",
+      "Principal": "*",
+      "Action": "s3:GetObject",
+      "Resource": "arn:aws:s3:::${DASHBOARD_BUCKET}/*"
+    }
+  ]
+}
+EOF
+aws s3api put-bucket-policy --bucket "$DASHBOARD_BUCKET" --region "$REGION" \
+  --policy "file://$BUILD_DIR/dashboard-bucket-policy.json"
+
+aws s3 cp "$DASHBOARD_DIR/dashboard.html" "s3://$DASHBOARD_BUCKET/dashboard.html" --region "$REGION" >/dev/null
+aws s3 cp "$DASHBOARD_DIR/chart.umd.min.js" "s3://$DASHBOARD_BUCKET/chart.umd.min.js" --region "$REGION" >/dev/null
+
+if [ "$REGION" == "us-east-1" ]; then
+  DASHBOARD_URL="http://${DASHBOARD_BUCKET}.s3-website-${REGION}.amazonaws.com/dashboard.html"
+else
+  DASHBOARD_URL="http://${DASHBOARD_BUCKET}.s3-website.${REGION}.amazonaws.com/dashboard.html"
+fi
+echo "Dashboard hosted at: $DASHBOARD_URL"
+
+# ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
 cat <<EOF
@@ -256,6 +310,7 @@ SNS alerts topic:  $SNS_TOPIC_ARN
 API base URL:      $API_URL
   GET $API_URL/telemetry
   GET $API_URL/alerts
+Dashboard URL:     $DASHBOARD_URL
 
 Next steps:
 1. Update sensors/config.json "aws" block:
@@ -263,8 +318,8 @@ Next steps:
      "alerts_queue_url":    "$ALERTS_QUEUE_URL"
 2. Run the fog node for real:
      cd ../sensors && python3 fog_node.py --live --duration 300
-3. Open dashboard/dashboard.html and set API_BASE_URL to:
-     $API_URL
+3. Open the hosted dashboard (no local file needed):
+     $DASHBOARD_URL
 ============================================================
 EOF
 
@@ -275,7 +330,9 @@ cat > "$BUILD_DIR/outputs.json" <<EOF
   "telemetry_queue_url": "$TELEMETRY_QUEUE_URL",
   "alerts_queue_url": "$ALERTS_QUEUE_URL",
   "sns_topic_arn": "$SNS_TOPIC_ARN",
-  "region": "$REGION"
+  "region": "$REGION",
+  "dashboard_url": "$DASHBOARD_URL",
+  "dashboard_bucket": "$DASHBOARD_BUCKET"
 }
 EOF
 echo "Saved to $BUILD_DIR/outputs.json"

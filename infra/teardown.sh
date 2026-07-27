@@ -55,4 +55,13 @@ for t in "$TELEMETRY_TABLE" "$ALERTS_TABLE"; do
   fi
 done
 
+echo "== Removing S3 dashboard bucket =="
+ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+DASHBOARD_BUCKET="${PROJECT}-dashboard-${ACCOUNT_ID}"
+if aws s3api head-bucket --bucket "$DASHBOARD_BUCKET" --region "$REGION" >/dev/null 2>&1; then
+  aws s3 rm "s3://$DASHBOARD_BUCKET" --recursive --region "$REGION" >/dev/null
+  aws s3api delete-bucket --bucket "$DASHBOARD_BUCKET" --region "$REGION"
+  echo "Deleted bucket $DASHBOARD_BUCKET"
+fi
+
 echo "Teardown complete."
