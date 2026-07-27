@@ -30,14 +30,18 @@ chmod 600 "$EC2_KEY_PATH" 2>/dev/null || true
 SSH_OPTS=(-i "$EC2_KEY_PATH" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -o BatchMode=yes)
 TARGET="$EC2_USER@$EC2_HOST"
 
-# Temporary diagnostic: prints verbose SSH negotiation/auth details so a
-# connection failure in CI shows the real reason instead of a bare exit
-# code. Safe to remove once the pipeline is confirmed working.
-echo "== Diagnostic: verbose SSH connection test =="
-ssh -v "${SSH_OPTS[@]}" "$TARGET" "echo remote-auth-ok" || true
-
 echo "== Stopping any web server already on port 80 =="
-ssh -v "${SSH_OPTS[@]}" "$TARGET" "sudo pkill -f 'http.server 80' || true"
+# The [h] bracket trick avoids "pkill -f" matching its own invoking shell
+# process: over a non-interactive SSH exec, the remote shell is started as
+# sh -c "<this exact command string>", so its own command line contains
+# whatever pattern we search for. Searching for "http.server 80" literally
+# matches that wrapper shell too and kills the SSH session out from under
+# itself (confirmed via `ssh -v`, which showed the command ending in
+# exit-signal rather than exit-status). Written as "[h]ttp.server" instead,
+# the pattern still matches the real "python3 -m http.server 80" process
+# via its command line, but no longer matches the pkill invocation itself,
+# since that string never appears literally with a leading "[h]".
+ssh "${SSH_OPTS[@]}" "$TARGET" "sudo pkill -f '[h]ttp.server 80' || true"
 
 echo "== Copying dashboard files to $EC2_HOST:~/$REMOTE_DIR =="
 ssh "${SSH_OPTS[@]}" "$TARGET" "mkdir -p ~/$REMOTE_DIR"
