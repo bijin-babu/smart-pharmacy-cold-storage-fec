@@ -34,7 +34,7 @@ jobs:
         run: python3 fog_node.py --dry-run --duration 15
 
   deploy:
-    name: Deploy backend to AWS
+    name: Deploy backend to AWS (Learner Lab)
     needs: build-and-test
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
@@ -56,26 +56,11 @@ jobs:
           chmod +x deploy.sh
           ./deploy.sh
 
-  deploy-dashboard-ec2:
-    name: Redeploy dashboard to EC2
-    needs: build-and-test
-    if: github.event_name != 'pull_request'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Write out SSH key
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/ec2_key.pem
-          chmod 600 ~/.ssh/ec2_key.pem
-
-      - name: Push dashboard files and restart web server
-        working-directory: infra
-        env:
-          EC2_HOST: ${{ secrets.EC2_HOST }}
-          EC2_KEY_PATH: /home/runner/.ssh/ec2_key.pem
-        run: |
-          chmod +x deploy_dashboard_ec2.sh
-          ./deploy_dashboard_ec2.sh
+  # Note: redeploying the EC2-hosted copy of the dashboard
+  # (infra/deploy_dashboard_ec2.sh) is intentionally not wired into this
+  # pipeline. Getting it running non-interactively over SSH turned out to
+  # need real debugging (a pkill self-match killing its own session, then
+  # a background process hang that needed setsid to fix) and re-running it
+  # here to also chase the timing kept costing more time than it was worth
+  # this close to the deadline. The script itself is finished and works
+  # when run by hand; it's just not on the automatic path yet.
