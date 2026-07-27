@@ -117,10 +117,19 @@ deploy_lambda() {
       --zip-file "fileb://$BUILD_DIR/$zip_name" \
       --region "$REGION" >/dev/null
     aws lambda wait function-updated --function-name "$fn_name" --region "$REGION"
+    # Also correct the handler setting: functions originally created through
+    # the AWS Console default to "lambda_function.lambda_handler", which no
+    # longer matches the code this script uploads (named after the actual
+    # source file, with an entry point called "handler"). Without this, the
+    # function's configuration silently keeps pointing at a module/function
+    # name that doesn't exist in the new code, and every invocation fails
+    # with a 502 Internal Server Error.
     aws lambda update-function-configuration \
       --function-name "$fn_name" \
+      --handler "$handler" \
       --environment "$env_json" \
       --region "$REGION" >/dev/null
+    aws lambda wait function-updated --function-name "$fn_name" --region "$REGION"
   else
     echo "Creating $fn_name..."
     aws lambda create-function \
