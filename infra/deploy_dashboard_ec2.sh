@@ -48,10 +48,15 @@ ssh "${SSH_OPTS[@]}" "$TARGET" "mkdir -p ~/$REMOTE_DIR"
 scp "${SSH_OPTS[@]}" "$DASHBOARD_DIR/dashboard.html" "$DASHBOARD_DIR/chart.umd.min.js" "$TARGET:~/$REMOTE_DIR/"
 
 echo "== Starting the web server on port 80 =="
-# nohup + redirected stdin/stdout/stderr so the process survives the SSH
-# session closing, same as how the fog node itself is kept alive on this box.
+# Redirecting stdin/stdout/stderr away from the SSH channel isn't enough on
+# its own to let a non-interactive SSH exec return: the background process
+# is still part of the same session as the SSH login shell, so the local
+# ssh client keeps waiting for that session's file descriptors to close and
+# hangs indefinitely (this is what happened before this fix). setsid moves
+# the process into a brand new session, fully detaching it, so the SSH
+# channel can close the moment the launching shell exits.
 ssh "${SSH_OPTS[@]}" "$TARGET" \
-  "cd ~/$REMOTE_DIR && sudo nohup python3 -m http.server 80 > ~/dashboard.log 2>&1 < /dev/null &"
+  "cd ~/$REMOTE_DIR && sudo setsid python3 -m http.server 80 > ~/dashboard.log 2>&1 < /dev/null &"
 
 sleep 2
 
