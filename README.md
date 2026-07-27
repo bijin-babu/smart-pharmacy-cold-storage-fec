@@ -21,7 +21,7 @@ This is my implementation of a fog-assisted IoT monitoring setup for a pharmacy 
 
 **Cloud backend** (`backend/*.py`, `infra/deploy.sh`) — SQS → Lambda → DynamoDB for both telemetry and alerts, plus a third Lambda behind API Gateway that the dashboard calls. Everything here is serverless, so it scales without me managing any servers.
 
-**Dashboard** (`dashboard/dashboard.html`) — one self-contained HTML file with Chart.js, no build step needed. `deploy.sh` publishes it to an S3 static website automatically, so it's reachable from a public URL rather than only as a local file, and it polls the API every 5 seconds.
+**Dashboard** (`dashboard/dashboard.html`) — one self-contained HTML file with Chart.js, no build step needed. `deploy.sh` publishes it to an S3 static website automatically, so it's reachable from a public URL rather than only as a local file, and it polls the API every 5 seconds. There's also a second copy running directly on the EC2 instance (behind its Elastic IP, on port 80), served by a plain Python `http.server` process — `infra/deploy_dashboard_ec2.sh` pushes fresh copies of the two dashboard files over SSH and restarts that process, and CI runs it automatically on every push too.
 
 ## Project layout
 
@@ -81,6 +81,6 @@ cd infra
 
 - The SNS alerts topic exists but I never subscribed an email to it — an easy follow-up if I wanted real notifications instead of just the dashboard panel.
 - No authentication on the API Gateway endpoints. Fine for a scoped class project with no real data behind it, but I've flagged it as a limitation in the report.
-- `.github/workflows/ci.yml` runs a syntax check plus the dry-run test on every push, and a second job then runs `deploy.sh` against AWS using session credentials stored as GitHub Actions secrets, so a push to `main` automatically redeploys the backend and republishes the dashboard. Those secrets have to be refreshed manually whenever a new Learner Lab session starts, since Learner Lab only issues temporary, session-scoped credentials rather than long-lived ones.
+- `.github/workflows/ci.yml` runs a syntax check plus the dry-run test on every push, then two deploy jobs run in parallel: one runs `deploy.sh` against AWS using session credentials stored as GitHub Actions secrets, the other runs `deploy_dashboard_ec2.sh` over SSH (using an EC2 key stored as a secret) to refresh the EC2-hosted copy of the dashboard. So a push to `main` redeploys the backend, republishes the S3 dashboard, and refreshes the EC2 one, all in the same run. The AWS credentials have to be refreshed manually whenever a new Learner Lab session starts, since Learner Lab only issues temporary, session-scoped credentials rather than long-lived ones; the EC2 key doesn't expire the same way, so that secret only needs to be set once.
 
 Full report and reflection are in `report/`. `AWS_Implementation_Guide.md` has my own step-by-step notes from actually setting the AWS side up, in case any of the Learner Lab quirks trip someone else up too.
