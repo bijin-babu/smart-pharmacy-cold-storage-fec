@@ -7,12 +7,21 @@ This is my implementation of a fog-assisted IoT monitoring setup for a pharmacy 
 ## How it fits together
 
 ```
-[Edge: 5 mock sensors]  --readings-->  [Fog node]  --batches (10s)-->  [SQS telemetry-queue] --> [Lambda ingest] --> [DynamoDB Telemetry]
-   temperature                          - threshold                                                                        |
-   humidity                              checks                     --alert (instant)--->  [SQS alerts-queue]  --> [Lambda ingest] --> [DynamoDB Alerts] --> [SNS topic]
-   door_status                         - batching                                                                          |
-   battery_level                       - dispatch                                                                         v
-   vibration                                                                                            [API Gateway] --> [Lambda API handler] --> dashboard.html (Chart.js)
+coldchain-fec/
+  sensors/
+    config.json           sensor + fog + AWS config
+    sensor_simulator.py   edge layer
+    fog_node.py           fog layer (run this)
+    requirements.txt
+  backend/
+    lambda_ingest_telemetry.py   SQS(telemetry) -> DynamoDB
+    lambda_ingest_alerts.py      SQS(alerts) -> DynamoDB + SNS
+    lambda_api_handler.py        API Gateway -> DynamoDB reads
+  infra/
+    deploy.sh             provisions everything on AWS (idempotent)
+    teardown.sh           tears it all back down
+  dashboard/
+    dashboard.html        open in any browser
 ```
 
 **Edge layer** (`sensors/sensor_simulator.py`) — 5 threads, one per sensor type, each generating readings at its own frequency with the occasional random anomaly so there's actually something for the fog node to catch.
@@ -41,27 +50,27 @@ coldchain-fec/
     teardown.sh           tears it all back down
   dashboard/
     dashboard.html        open in any browser
-  report/
-    H9FECC_Report_Bijin_Babu.docx / .pdf
+
 ```
+
 
 ## Running it
 
-**1. Test locally first, no AWS needed:**
+**1. Test locally, no AWS needed:**
 ```bash
 cd sensors
-pip install -r requirements.txt --break-system-packages   # just boto3
+pip install -r requirements.txt --break-system-packages
 python3 fog_node.py --duration 60
 ```
-This runs in dry-run mode — it prints what it *would* send instead of actually calling AWS. Good way to check the sensor/fog logic before dealing with real credentials. You should see periodic `[FOG] Dispatching telemetry batch...` lines and, less often, `[FOG][EARLY-WARNING]` lines when an anomaly gets injected.
+Dry-run mode — prints what it would send instead of calling AWS.
 
-**2. Deploy the backend.** I used an AWS Academy Learner Lab account, which only hands out temporary session credentials and a single pre-made `LabRole` (no creating your own IAM roles), so `deploy.sh` is built around that constraint. Export the session credentials from the Learner Lab's "AWS Details" panel, then:
+**2. Deploy the backend** (requires an AWS account with a usable IAM role, e.g. AWS Academy Learner Lab's `LabRole`):
 ```bash
 cd infra
 chmod +x deploy.sh
 ./deploy.sh
 ```
-It prints the API base URL, queue URLs, and the dashboard's public S3 URL at the end — I copied the queue URLs into `sensors/config.json`. The script is idempotent, so if the Learner Lab credentials expire mid-session (they do, every few hours) I just re-export fresh ones and run it again; it skips anything already created.
+Prints the API base URL, queue URLs, and the dashboard's S3 URL. Copy the queue URLs into `sensors/config.json`.
 
 **3. Send real data to AWS:**
 ```bash
@@ -69,18 +78,14 @@ cd sensors
 python3 fog_node.py --live --duration 300
 ```
 
-**4. Open the dashboard** — `deploy.sh` publishes `dashboard.html` to an S3 static website and prints the URL (something like `http://coldchain-dashboard-<account-id>.s3-website-us-east-1.amazonaws.com/dashboard.html`). It's already pointed at the deployed API, so it connects and starts drawing live charts right away, no local file needed. `dashboard/dashboard.html` still works fine opened locally too, if preferred.
+**4. Open the dashboard** at the S3 URL printed by `deploy.sh`, or open `dashboard/dashboard.html` locally.
 
-**5. Tear down when done**, to stay inside the Learner Lab budget:
+**5. Tear down when done:**
 ```bash
 cd infra
 ./teardown.sh
 ```
 
-## A few things worth knowing
+## CI/CD
 
-- The SNS alerts topic exists but I never subscribed an email to it — an easy follow-up if I wanted real notifications instead of just the dashboard panel.
-- No authentication on the API Gateway endpoints. Fine for a scoped class project with no real data behind it, but I've flagged it as a limitation in the report.
-- `.github/workflows/ci.yml` runs a syntax check plus the dry-run test on every push, then two deploy jobs run in parallel: one runs `deploy.sh` against AWS using session credentials stored as GitHub Actions secrets, the other runs `deploy_dashboard_ec2.sh` over SSH (using an EC2 key stored as a secret) to refresh the EC2-hosted copy of the dashboard. So a push to `main` redeploys the backend, republishes the S3 dashboard, and refreshes the EC2 one, all in the same run. The AWS credentials have to be refreshed manually whenever a new Learner Lab session starts, since Learner Lab only issues temporary, session-scoped credentials rather than long-lived ones; the EC2 key doesn't expire the same way, so that secret only needs to be set once.
-
-Full report and reflection are in `report/`. `AWS_Implementation_Guide.md` has my own step-by-step notes from actually setting the AWS side up, in case any of the Learner Lab quirks trip someone else up too.
+`.github/workflows/ci.yml` runs a syntax check and a dry-run test on every push, then deploys the backend to AWS automatically on a successful push to `main`, using session credentials stored as GitHub Actions secrets.
