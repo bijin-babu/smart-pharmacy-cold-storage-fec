@@ -34,7 +34,7 @@ jobs:
         run: python3 fog_node.py --dry-run --duration 15
 
   deploy:
-    name: Deploy backend to AWS (Learner Lab)
+    name: Deploy backend to AWS
     needs: build-and-test
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
