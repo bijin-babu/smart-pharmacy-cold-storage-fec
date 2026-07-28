@@ -34,7 +34,7 @@ jobs:
         run: python3 fog_node.py --dry-run --duration 15
 
   deploy:
-    name: Deploy backend to AWS Cloud
+    name: Deploy backend to AWS Cloud services
     needs: build-and-test
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
